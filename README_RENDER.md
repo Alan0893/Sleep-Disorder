@@ -22,6 +22,7 @@
 4. **Configure Settings**
    - **Name**: `sleep-health-recommendations` (or your preferred name)
    - **Environment**: `Python 3`
+   - **Python Version**: `3.11.7` (IMPORTANT: pandas 2.1.4 requires Python 3.11, not 3.13)
    - **Root Directory**: `App` (if your app is in the App folder)
    - **Build Command**: `pip install -r requirements.txt`
    - **Start Command**: `gunicorn recommendation_app:app --bind 0.0.0.0:$PORT`
