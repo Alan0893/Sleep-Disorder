@@ -24,9 +24,10 @@ def load_model_and_data():
     global df, scaler_cluster, pca, kmeans, le_gender, le_occupation, le_bmi
     
     # Load data - try multiple possible paths
+    # Priority: same directory, then parent directories
     possible_paths = [
+        os.path.join(os.path.dirname(__file__), 'Sleep_health_and_lifestyle_dataset.csv'),  # Same directory (for Render)
         os.path.join(os.path.dirname(__file__), '..', 'Project', 'Sleep_health_and_lifestyle_dataset.csv'),
-        os.path.join(os.path.dirname(__file__), 'Sleep_health_and_lifestyle_dataset.csv'),
         os.path.join(os.path.dirname(__file__), '..', 'Sleep_health_and_lifestyle_dataset.csv')
     ]
     
