@@ -40,6 +40,9 @@
 
 ## Troubleshooting
 
+- **Build fails with Python 3.13 error**: 
+  - **Option 1**: In Render dashboard → Settings → Environment, add `PYTHON_VERSION=3.11.7` and redeploy
+  - **Option 2**: The requirements.txt now uses pandas 2.2.0+ which supports Python 3.13, so you can use Python 3.13
 - **Build fails**: Check that all dependencies in `requirements.txt` are correct
 - **App crashes**: Check the logs in Render dashboard for error messages
 - **CSV not found**: Ensure `Sleep_health_and_lifestyle_dataset.csv` is in the App directory and committed to Git
