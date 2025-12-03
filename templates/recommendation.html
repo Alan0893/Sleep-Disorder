@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sleep Health Recommendation System</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -407,6 +408,28 @@
                         <div id="recommendations"></div>
                     </div>
 
+                    <div class="chart-container full-width" style="margin: 20px 0;">
+                        <h3 style="margin-bottom: 10px; text-align: center;">Your Position in Cluster Space</h3>
+                        <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #8B6F47;">
+                            <p style="margin: 0; font-size: 14px; line-height: 1.6; margin-bottom: 10px;">
+                                <strong>Understanding the Graph:</strong> This visualization shows your position in a space created by Principal Component Analysis (PCA). 
+                                The axes represent combined health and lifestyle factors. Your position (yellow marker) shows where you fall relative to others in the dataset. 
+                                Points of the same color belong to the same lifestyle-health profile cluster.
+                            </p>
+                            <div id="pcaLegend" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-top: 15px;">
+                                <!-- Will be populated by JavaScript -->
+                            </div>
+                        </div>
+                        <div style="margin-bottom: 20px;">
+                            <h4 style="text-align: center; margin-bottom: 10px;">2D View (PC1 vs PC2)</h4>
+                            <canvas id="clusterVisualizationChart"></canvas>
+                        </div>
+                        <div style="margin-bottom: 20px;">
+                            <h4 style="text-align: center; margin-bottom: 10px;">3D View (PC1, PC2, PC3)</h4>
+                            <div id="clusterVisualization3D" style="height: 500px;"></div>
+                        </div>
+                    </div>
+
                     <table class="comparison-table">
                         <thead>
                             <tr>
@@ -514,6 +537,12 @@
             
             // Create comparison table
             createComparisonTable(data);
+            
+            // Create PCA legend
+            createPCALegend(data);
+            
+            // Create cluster visualization
+            createClusterVisualization(data);
         }
 
         function createComparisonTable(data) {
@@ -548,6 +577,309 @@
                 `;
                 tbody.appendChild(row);
             });
+        }
+
+        let clusterChart = null;
+
+        function createPCALegend(data) {
+            const legendDiv = document.getElementById('pcaLegend');
+            legendDiv.innerHTML = '';
+            
+            const pcs = ['PC1', 'PC2', 'PC3'];
+            const pcNames = {
+                'PC1': 'Cardiovascular-Metabolic Risk Factor',
+                'PC2': 'Age-Associated Sleep Health',
+                'PC3': 'Physical Activity Lifestyle'
+            };
+            const pcColors = ['#8B6F47', '#A0826D', '#6B4423'];
+            
+            pcs.forEach((pc, idx) => {
+                const pcDiv = document.createElement('div');
+                pcDiv.style.background = 'white';
+                pcDiv.style.padding = '10px';
+                pcDiv.style.borderRadius = '5px';
+                pcDiv.style.border = `2px solid ${pcColors[idx]}`;
+                
+                const variance = data.variance_explained[pc].toFixed(1);
+                pcDiv.innerHTML = `<strong style="color: ${pcColors[idx]};">${pc}: ${pcNames[pc]}</strong><br><span style="font-size: 11px; color: #666;">${variance}% variance</span><br>`;
+                
+                // Get top contributing features (absolute value)
+                const features = Object.keys(data.pca_loadings);
+                const contributions = features.map(f => ({
+                    name: f.replace(/_/g, ' ').replace('Encoded', '').trim(),
+                    value: data.pca_loadings[f][pc],
+                    absValue: Math.abs(data.pca_loadings[f][pc])
+                }));
+                
+                // Sort by absolute value and get top 5
+                contributions.sort((a, b) => b.absValue - a.absValue);
+                const topFeatures = contributions.slice(0, 5);
+                
+                const featureList = document.createElement('ul');
+                featureList.style.margin = '5px 0 0 0';
+                featureList.style.paddingLeft = '20px';
+                featureList.style.fontSize = '12px';
+                
+                topFeatures.forEach(f => {
+                    const li = document.createElement('li');
+                    const sign = f.value >= 0 ? '+' : '-';
+                    const color = f.value >= 0 ? '#2ecc71' : '#e74c3c';
+                    li.innerHTML = `<span style="color: ${color};">${sign}</span> ${f.name} <span style="color: #666; font-size: 11px;">(${f.value.toFixed(2)})</span>`;
+                    featureList.appendChild(li);
+                });
+                
+                pcDiv.appendChild(featureList);
+                legendDiv.appendChild(pcDiv);
+            });
+        }
+
+        function createClusterVisualization(data) {
+            const ctx = document.getElementById('clusterVisualizationChart').getContext('2d');
+            
+            // Destroy existing chart if it exists
+            if (clusterChart) {
+                clusterChart.destroy();
+            }
+            
+            // Cluster colors matching the badge colors
+            const clusterColors = [
+                'rgba(46, 204, 113, 0.6)',  // Cluster 0 - green
+                'rgba(231, 76, 60, 0.6)',   // Cluster 1 - red
+                'rgba(52, 152, 219, 0.6)',  // Cluster 2 - blue
+                'rgba(243, 156, 18, 0.6)'  // Cluster 3 - orange
+            ];
+            
+            const clusterBorderColors = [
+                'rgba(46, 204, 113, 1)',
+                'rgba(231, 76, 60, 1)',
+                'rgba(52, 152, 219, 1)',
+                'rgba(243, 156, 18, 1)'
+            ];
+            
+            // Prepare datasets for each cluster
+            const datasets = [];
+            
+            // Add cluster sample points
+            for (let i = 0; i < 4; i++) {
+                if (data.cluster_samples[i]) {
+                    const clusterData = data.cluster_samples[i];
+                    datasets.push({
+                        label: `Cluster ${i}`,
+                        data: clusterData.pc1.map((x, idx) => ({
+                            x: x,
+                            y: clusterData.pc2[idx]
+                        })),
+                        backgroundColor: clusterColors[i],
+                        borderColor: clusterBorderColors[i],
+                        borderWidth: 1,
+                        pointRadius: 4,
+                        pointHoverRadius: 6
+                    });
+                }
+            }
+            
+            // Add cluster centroids
+            const centroidData = data.cluster_centroids.map((centroid, i) => ({
+                x: centroid.pc1,
+                y: centroid.pc2
+            }));
+            
+            datasets.push({
+                label: 'Cluster Centroids',
+                data: centroidData,
+                backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                borderColor: 'rgba(0, 0, 0, 1)',
+                borderWidth: 2,
+                pointRadius: 8,
+                pointHoverRadius: 10,
+                pointStyle: 'star'
+            });
+            
+            // Add user's position
+            datasets.push({
+                label: 'Your Position',
+                data: [{
+                    x: data.user_pca_coords.pc1,
+                    y: data.user_pca_coords.pc2
+                }],
+                backgroundColor: 'rgba(255, 255, 0, 0.9)',
+                borderColor: 'rgba(255, 215, 0, 1)',
+                borderWidth: 3,
+                pointRadius: 10,
+                pointHoverRadius: 12,
+                pointStyle: 'circle'
+            });
+            
+            clusterChart = new Chart(ctx, {
+                type: 'scatter',
+                data: {
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    aspectRatio: 1.5,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Cluster Visualization in PCA Space',
+                            font: {
+                                size: 16,
+                                weight: 'bold'
+                            }
+                        },
+                        legend: {
+                            display: true,
+                            position: 'right'
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.dataset.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    label += '(' + context.parsed.x.toFixed(2) + ', ' + context.parsed.y.toFixed(2) + ')';
+                                    return label;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: `PC1: Cardiovascular-Metabolic Risk (${data.variance_explained.PC1.toFixed(1)}%)`,
+                                font: {
+                                    size: 11,
+                                    weight: 'bold'
+                                }
+                            },
+                            grid: {
+                                color: 'rgba(0, 0, 0, 0.1)'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: `PC2: Age-Associated Sleep Health (${data.variance_explained.PC2.toFixed(1)}%)`,
+                                font: {
+                                    size: 11,
+                                    weight: 'bold'
+                                }
+                            },
+                            grid: {
+                                color: 'rgba(0, 0, 0, 0.1)'
+                            }
+                        }
+                    }
+                }
+            });
+            
+            // Create 3D visualization
+            createClusterVisualization3D(data);
+        }
+
+        function createClusterVisualization3D(data) {
+            const clusterColors = [
+                'rgba(46, 204, 113, 0.6)',  // Cluster 0 - green
+                'rgba(231, 76, 60, 0.6)',   // Cluster 1 - red
+                'rgba(52, 152, 219, 0.6)',  // Cluster 2 - blue
+                'rgba(243, 156, 18, 0.6)'  // Cluster 3 - orange
+            ];
+            
+            const traces = [];
+            
+            // Add cluster sample points
+            for (let i = 0; i < 4; i++) {
+                if (data.cluster_samples[i]) {
+                    const clusterData = data.cluster_samples[i];
+                    // Get PC3 data from cluster samples if available, otherwise use centroids
+                    const pc3Data = clusterData.pc3 || Array(clusterData.pc1.length).fill(data.cluster_centroids[i].pc3);
+                    
+                    traces.push({
+                        x: clusterData.pc1,
+                        y: clusterData.pc2,
+                        z: pc3Data,
+                        mode: 'markers',
+                        type: 'scatter3d',
+                        name: `Cluster ${i}`,
+                        marker: {
+                            size: 4,
+                            color: clusterColors[i],
+                            line: {
+                                color: clusterColors[i].replace('0.6', '1'),
+                                width: 1
+                            }
+                        }
+                    });
+                }
+            }
+            
+            // Add cluster centroids
+            const centroidX = data.cluster_centroids.map(c => c.pc1);
+            const centroidY = data.cluster_centroids.map(c => c.pc2);
+            const centroidZ = data.cluster_centroids.map(c => c.pc3);
+            
+            traces.push({
+                x: centroidX,
+                y: centroidY,
+                z: centroidZ,
+                mode: 'markers',
+                type: 'scatter3d',
+                name: 'Cluster Centroids',
+                marker: {
+                    size: 8,
+                    color: 'rgba(0, 0, 0, 0.8)',
+                    symbol: 'diamond',
+                    line: {
+                        color: 'rgba(0, 0, 0, 1)',
+                        width: 2
+                    }
+                }
+            });
+            
+            // Add user's position
+            traces.push({
+                x: [data.user_pca_coords.pc1],
+                y: [data.user_pca_coords.pc2],
+                z: [data.user_pca_coords.pc3],
+                mode: 'markers',
+                type: 'scatter3d',
+                name: 'Your Position',
+                marker: {
+                    size: 12,
+                    color: 'rgba(255, 255, 0, 0.9)',
+                    line: {
+                        color: 'rgba(255, 215, 0, 1)',
+                        width: 3
+                    }
+                }
+            });
+            
+            const layout = {
+                scene: {
+                    xaxis: {
+                        title: `PC1: Cardiovascular-Metabolic Risk (${data.variance_explained.PC1.toFixed(1)}%)`,
+                        titlefont: { size: 11 }
+                    },
+                    yaxis: {
+                        title: `PC2: Age-Associated Sleep Health (${data.variance_explained.PC2.toFixed(1)}%)`,
+                        titlefont: { size: 11 }
+                    },
+                    zaxis: {
+                        title: `PC3: Physical Activity Lifestyle (${data.variance_explained.PC3.toFixed(1)}%)`,
+                        titlefont: { size: 11 }
+                    },
+                    camera: {
+                        eye: { x: 1.5, y: 1.5, z: 1.5 }
+                    }
+                },
+                margin: { l: 0, r: 0, t: 0, b: 0 },
+                height: 400
+            };
+            
+            Plotly.newPlot('clusterVisualization3D', traces, layout, {responsive: true});
         }
     </script>
 </body>

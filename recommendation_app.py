@@ -182,6 +182,66 @@ def recommend():
         # Cluster names and descriptions
         cluster_info = get_cluster_info(predicted_cluster)
         
+        # Get PCA coordinates for visualization
+        # Transform all data to PCA space for visualization
+        numerical_features = ['Age', 'Sleep Duration', 'Quality of Sleep', 'Physical Activity Level',
+                             'Stress Level', 'Heart Rate', 'Daily Steps', 'Systolic_BP', 'Diastolic_BP',
+                             'Gender_Encoded', 'Occupation_Encoded', 'BMI_Category_Encoded']
+        X_all_scaled = scaler_cluster.transform(df[numerical_features])
+        X_all_pca = pca.transform(X_all_scaled)
+        
+        # Get PCA loadings (component contributions)
+        pca_loadings = pca.components_.T  # Transpose: rows = features, columns = PCs
+        pca_loadings_dict = {}
+        for i, feature in enumerate(numerical_features):
+            pca_loadings_dict[feature] = {
+                'PC1': float(pca_loadings[i][0]),
+                'PC2': float(pca_loadings[i][1]),
+                'PC3': float(pca_loadings[i][2])
+            }
+        
+        # Get variance explained by each component
+        variance_explained = {
+            'PC1': float(pca.explained_variance_ratio_[0] * 100),
+            'PC2': float(pca.explained_variance_ratio_[1] * 100),
+            'PC3': float(pca.explained_variance_ratio_[2] * 100)
+        }
+        
+        # Get user's PCA coordinates
+        user_pca_coords = {
+            'pc1': float(user_features_pca[0][0]),
+            'pc2': float(user_features_pca[0][1]),
+            'pc3': float(user_features_pca[0][2])
+        }
+        
+        # Get cluster centroids in PCA space
+        cluster_centroids = []
+        for i in range(4):
+            cluster_mask = df['Lifestyle_Health_Profile'] == i
+            cluster_pca_points = X_all_pca[cluster_mask]
+            centroid = cluster_pca_points.mean(axis=0)
+            cluster_centroids.append({
+                'pc1': float(centroid[0]),
+                'pc2': float(centroid[1]),
+                'pc3': float(centroid[2])
+            })
+        
+        # Sample points from each cluster for visualization (to avoid too many points)
+        np.random.seed(42)  # For reproducibility
+        cluster_samples = {}
+        for i in range(4):
+            cluster_mask = df['Lifestyle_Health_Profile'] == i
+            cluster_pca_points = X_all_pca[cluster_mask]
+            # Sample up to 30 points per cluster
+            n_samples = min(30, len(cluster_pca_points))
+            sample_indices = np.random.choice(len(cluster_pca_points), n_samples, replace=False)
+            sampled_points = cluster_pca_points[sample_indices]
+            cluster_samples[i] = {
+                'pc1': [float(x) for x in sampled_points[:, 0]],
+                'pc2': [float(x) for x in sampled_points[:, 1]],
+                'pc3': [float(x) for x in sampled_points[:, 2]]
+            }
+        
         # Prepare response
         response = {
             'cluster': int(predicted_cluster),
@@ -193,6 +253,11 @@ def recommend():
             'cluster_size': cluster_size,
             'total_size': len(df),
             'cluster_percentage': round(cluster_pct, 1),
+            'user_pca_coords': user_pca_coords,
+            'cluster_centroids': cluster_centroids,
+            'cluster_samples': cluster_samples,
+            'pca_loadings': pca_loadings_dict,
+            'variance_explained': variance_explained,
             'user_metrics': {
                 'age': user_age,
                 'gender': user_gender,
